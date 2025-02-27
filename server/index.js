@@ -14,17 +14,19 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use('/media', express.static('D:\\Live\\server\\media'));
 
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error(err));
 
+// Node-Media-Server configuration
 const config = {
   rtmp: {
     port: 1935,
     chunk_size: 60000,
     gop_cache: true,
-    ping: 30,
-    ping_timeout: 60
+    ping: 60,
+    ping_timeout: 120
   },
   http: {
     port: 8000,
@@ -46,7 +48,18 @@ const config = {
 };
 
 const nms = new NodeMediaServer(config);
-nms.run();
+// Event listeners for Node-Media-Server
+nms.on('preConnect', (id, args) => {
+  console.log('[RTMP] Client connected:', id, args);
+});
+
+nms.on('postConnect', (id, args) => {
+  console.log('[RTMP] Client authenticated:', id, args);
+});
+
+nms.on('doneConnect', (id, args) => {
+  console.log('[RTMP] Client disconnected:', id, args);
+});
 
 nms.on('prePublish', async (id, StreamPath, args) => {
   const streamKey = StreamPath.split('/')[2];
@@ -77,14 +90,14 @@ nms.on('donePublish', (id, StreamPath, args) => {
   console.log(`[RTMP] Stream ended: ${StreamPath}`);
 });
 
-nms.on('transcoding', (id, StreamPath, args) => {
-  console.log(`[HLS] Transcoding started for ${StreamPath}`);
-});
-
 nms.on('error', (err, id, StreamPath) => {
   console.error(`[ERROR] ${StreamPath || 'Unknown'}: ${err.message}`);
 });
 
+// Start the Node-Media-Server
+nms.run();
+
+// API endpoints
 app.get('/api/stream/key', async (req, res) => {
   const streamKey = uuidv4();
   const stream = new Stream({ title: 'New Stream', streamKey });
